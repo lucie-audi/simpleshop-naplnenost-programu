@@ -152,6 +152,34 @@ function pullSimpleShopData() {
   pushToDashboard(programList, todayStr);
 }
 
+// Čte cílovou kapacitu jednorázových akcí z plánovací tabulky "2026 Budget
+// vzdělávání" (list "Školení", sekce "Plán", sloupec F = "Reálný počet
+// účastníků"). SimpleShop kapacitu nikde neeviduje, takže bez tohohle
+// zdroje nejde spočítat skutečnou naplněnost v %, jen holý počet přihlášek.
+function loadCapacityTargets() {
+  var targets = {};
+  try {
+    var budgetSs = SpreadsheetApp.openById('1Alv22uvq4mkotC034qG0DSbN_lP4pFr72KzxNC3ivwo');
+    var sheet = budgetSs.getSheetByName('Školení');
+    var data = sheet.getDataRange().getValues();
+    var inPlan = false;
+    for (var i = 0; i < data.length; i++) {
+      var col1 = String(data[i][1] || '').trim(); // sloupec B (Datum / popisek sekce)
+      if (col1 === 'Plán') { inPlan = true; continue; }
+      if (col1 === 'Realita') break; // konec sekce Plán
+      if (!inPlan) continue;
+      var m = col1.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+      if (!m) continue; // přeskočí "CELKEM", prázdné řádky apod.
+      var key = m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+      var target = data[i][5]; // sloupec F
+      if (typeof target === 'number' && target > 0) targets[key] = target;
+    }
+  } catch (e) {
+    Logger.log('Nepodařilo se načíst cílovou kapacitu: ' + e.message);
+  }
+  return targets;
+}
+
 function pushToDashboard(programList, todayStr) {
   var url = PropertiesService.getScriptProperties().getProperty('DASHBOARD_INGEST_URL');
   var secret = PropertiesService.getScriptProperties().getProperty('DASHBOARD_INGEST_SECRET');
@@ -162,6 +190,7 @@ function pushToDashboard(programList, todayStr) {
     programs: programList.map(function (p) {
       return { name: p.name, price: p.enrollments ? Math.round(p.revenue / p.enrollments) : 0, enrollments: p.enrollments, newToday: p.newToday };
     }),
+    capacityByDate: loadCapacityTargets(),
   };
 
   UrlFetchApp.fetch(url, {
