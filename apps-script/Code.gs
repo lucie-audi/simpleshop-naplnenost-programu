@@ -26,12 +26,26 @@ function isDiscountLine(name) {
   return /^sleva\b/i.test((name || '').trim());
 }
 
+var CZECH_MONTHS = /(ledna|února|unora|března|brezna|dubna|května|kvetna|června|cervna|července|cervence|srpna|září|zari|října|rijna|listopadu|prosince)/i;
+
 function normalizeItemName(name) {
-  var n = name || '';
-  // Obecný název položky bývá "Registrace na X (Varianta)" – skutečně rozlišující
-  // je jen to, co je v závorce, zbytek je stejná fráze pro všechny varianty.
-  var m = n.match(/^Registrace na .*?\(([^)]+)\)\s*$/i);
-  if (m) n = m[1];
+  var n = (name || '').trim();
+  // Obecný tvar bývá "Prefix (Varianta)". U položek s konkrétním termínem
+  // (konzultace na kalendáři, "(4. května 17:00-18:00)") je ale to, co je v
+  // závorce, jen datum schůzky – ne rozlišující varianta programu. V tom
+  // případě naopak zahodíme závorku a použijeme jen prefix, aby se všechny
+  // termíny sečetly do jednoho programu.
+  var m = n.match(/^(.*?)\(([^)]*)\)\s*$/);
+  if (m) {
+    var prefix = m[1].trim();
+    var inner = m[2].trim();
+    var isSchedule = CZECH_MONTHS.test(inner) || /\d{1,2}:\d{2}/.test(inner);
+    if (isSchedule && prefix) {
+      n = prefix;
+    } else if (inner) {
+      n = inner;
+    }
+  }
   // Odstraní příponu platebního plánu, např. "Mentoring Standard – Platba na 2 měsíční splátky"
   n = n.replace(/\s*[–-]\s*Platba na \d+ měsíční splátky.*$/i, '');
   // Odstraní běžné cenové/slevové přípony u produktů, které nemají variantu, ale jen jiný název
