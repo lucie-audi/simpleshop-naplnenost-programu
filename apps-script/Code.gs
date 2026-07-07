@@ -90,9 +90,13 @@ function pullSimpleShopData() {
 
         if (isDiscountLine(polozka)) continue; // sleva/kupón, ne skutečný program
         var canon = normalizeItemName(polozka);
-        if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {} };
+        if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {}, revenue: 0 };
         programs[canon].emails[email] = true;
         if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) programs[canon].emailsToday[email] = true;
+        // "Cena položky celkem" – skutečná zaplacená částka za tuhle položku, ne
+        // jen katalogová cena produktu (u slev/stipendií jsou jiné).
+        var lineTotal = parseFloat((cols[3] || '0').replace(',', '.'));
+        if (!isNaN(lineTotal)) programs[canon].revenue += lineTotal;
       }
       total = Object.keys(paidAll).length;
       newToday = Object.keys(paidToday).length;
@@ -112,13 +116,45 @@ function pullSimpleShopData() {
   if (log.getLastRow() === 0) log.appendRow(['Datum', 'ID produktu', 'Program', 'Nových přihlášek']);
   log.getRange(log.getLastRow() + 1, 1, logRows.length, 4).setValues(logRows);
 
-  var progRows = Object.keys(programs).map(function (name) {
+  var programList = Object.keys(programs).map(function (name) {
     var p = programs[name];
-    return [name, Object.keys(p.emailsToday).length, Object.keys(p.emails).length, todayStr];
-  }).sort(function (a, b) { return b[2] - a[2]; });
+    return {
+      name: name,
+      enrollments: Object.keys(p.emails).length,
+      newToday: Object.keys(p.emailsToday).length,
+      revenue: Math.round(p.revenue),
+    };
+  }).sort(function (a, b) { return b.enrollments - a.enrollments; });
+
+  var progRows = programList.map(function (p) {
+    return [p.name, p.newToday, p.enrollments, p.revenue, todayStr];
+  });
 
   var progSheet = ss.getSheetByName('Programy') || ss.insertSheet('Programy');
   progSheet.clear();
-  progSheet.getRange(1, 1, 1, 4).setValues([['Program', 'Nových dnes', 'Celkem přihlášeno', 'Poslední aktualizace']]);
-  if (progRows.length > 0) progSheet.getRange(2, 1, progRows.length, 4).setValues(progRows);
+  progSheet.getRange(1, 1, 1, 5).setValues([['Program', 'Nových dnes', 'Celkem přihlášeno', 'Tržby', 'Poslední aktualizace']]);
+  if (progRows.length > 0) progSheet.getRange(2, 1, progRows.length, 5).setValues(progRows);
+
+  pushToDashboard(programList, todayStr);
+}
+
+function pushToDashboard(programList, todayStr) {
+  var url = PropertiesService.getScriptProperties().getProperty('DASHBOARD_INGEST_URL');
+  var secret = PropertiesService.getScriptProperties().getProperty('DASHBOARD_INGEST_SECRET');
+  if (!url || !secret) return; // dashboard push not configured, skip silently
+
+  var payload = {
+    updatedAt: todayStr,
+    programs: programList.map(function (p) {
+      return { name: p.name, price: p.enrollments ? Math.round(p.revenue / p.enrollments) : 0, enrollments: p.enrollments, newToday: p.newToday };
+    }),
+  };
+
+  UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + secret },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
 }
