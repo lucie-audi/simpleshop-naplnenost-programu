@@ -162,6 +162,10 @@ function loadCapacityTargets() {
     var budgetSs = SpreadsheetApp.openById('1Alv22uvq4mkotC034qG0DSbN_lP4pFr72KzxNC3ivwo');
     var sheet = budgetSs.getSheetByName('Školení');
     var data = sheet.getDataRange().getValues();
+    Logger.log('DEBUG header row0: ' + JSON.stringify(data[0]));
+    Logger.log('DEBUG row1: ' + JSON.stringify(data[1]));
+    Logger.log('DEBUG row2: ' + JSON.stringify(data[2]));
+    Logger.log('DEBUG row3: ' + JSON.stringify(data[3]));
     var inPlan = false;
     for (var i = 0; i < data.length; i++) {
       var col1 = String(data[i][1] || '').trim(); // sloupec B (Datum / popisek sekce)
@@ -174,6 +178,7 @@ function loadCapacityTargets() {
       var target = data[i][5]; // sloupec F
       if (typeof target === 'number' && target > 0) targets[key] = target;
     }
+    Logger.log('DEBUG targets found: ' + JSON.stringify(targets));
   } catch (e) {
     Logger.log('Nepodařilo se načíst cílovou kapacitu: ' + e.message);
   }
