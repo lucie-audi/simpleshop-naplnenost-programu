@@ -19,8 +19,19 @@ function parseCsvLine(line) {
   return result;
 }
 
+function isDiscountLine(name) {
+  // Slevy/kupóny se v exportu objevují jako samostatná položka na faktuře
+  // (např. "Sleva (790 CZK)", "Sleva (30 %)") – není to koupený program, je to
+  // úprava ceny objednávky, kterou nesmíme počítat jako přihlášku.
+  return /^sleva\b/i.test((name || '').trim());
+}
+
 function normalizeItemName(name) {
   var n = name || '';
+  // Obecný název položky bývá "Registrace na X (Varianta)" – skutečně rozlišující
+  // je jen to, co je v závorce, zbytek je stejná fráze pro všechny varianty.
+  var m = n.match(/^Registrace na .*?\(([^)]+)\)\s*$/i);
+  if (m) n = m[1];
   // Odstraní příponu platebního plánu, např. "Mentoring Standard – Platba na 2 měsíční splátky"
   n = n.replace(/\s*[–-]\s*Platba na \d+ měsíční splátky.*$/i, '');
   // Odstraní běžné cenové/slevové přípony u produktů, které nemají variantu, ale jen jiný název
@@ -77,6 +88,7 @@ function pullSimpleShopData() {
         paidAll[email] = true;
         if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) paidToday[email] = true;
 
+        if (isDiscountLine(polozka)) continue; // sleva/kupón, ne skutečný program
         var canon = normalizeItemName(polozka);
         if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {} };
         programs[canon].emails[email] = true;
