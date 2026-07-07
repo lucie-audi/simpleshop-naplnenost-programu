@@ -44,12 +44,22 @@ function pullSimpleShopData() {
     try {
       var csv = JSON.parse(resp.getContentText()).csv || '';
       var lines = csv.split('\n').filter(function (l) { return l.trim().length > 0; });
-      total = Math.max(lines.length - 1, 0);
+      // Počítáme distinct e-maily se stavem "Uhrazeno" – ne řádky. Platba na splátky
+      // generuje víc faktur (řádků) pro jednoho člověka, takže bez deduplikace
+      // by se stejný člověk počítal víckrát.
+      var paidAll = {};
+      var paidToday = {};
       for (var i = 1; i < lines.length; i++) {
         var cols = parseCsvLine(lines[i]);
-        var created = cols[23]; // sloupec "Vytvořeno"
-        if (created && created.indexOf(todayStr) === 0) newToday++;
+        var stav = cols[8];       // sloupec "Stav"
+        if (stav !== 'Uhrazeno') continue;
+        var email = cols[4];      // sloupec "E-mail"
+        var uhrazeno = cols[24];  // sloupec "Uhrazeno" (datum platby)
+        paidAll[email] = true;
+        if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) paidToday[email] = true;
       }
+      total = Object.keys(paidAll).length;
+      newToday = Object.keys(paidToday).length;
     } catch (e) {}
     summaryRows.push([p.id, p.name, p.price, newToday, total, todayStr]);
     logRows.push([todayStr, p.id, p.name, newToday]);
