@@ -156,29 +156,37 @@ function pullSimpleShopData() {
 // vzdělávání" (list "Školení", sekce "Plán", sloupec F = "Reálný počet
 // účastníků"). SimpleShop kapacitu nikde neeviduje, takže bez tohohle
 // zdroje nejde spočítat skutečnou naplněnost v %, jen holý počet přihlášek.
+function extractDateKey(cellValue, tz) {
+  // Sloupec B je ve skutečnosti nakonfigurovaný jako datum (ne text) – getValues()
+  // ho proto vrací jako JS Date objekt, ne jako string "19. 1. 2026".
+  if (Object.prototype.toString.call(cellValue) === '[object Date]') {
+    return Utilities.formatDate(cellValue, tz, 'yyyy-MM-dd');
+  }
+  var s = String(cellValue || '').trim();
+  var m = s.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+  if (!m) return null;
+  return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+}
+
 function loadCapacityTargets() {
   var targets = {};
   try {
     var budgetSs = SpreadsheetApp.openById('1Alv22uvq4mkotC034qG0DSbN_lP4pFr72KzxNC3ivwo');
+    var tz = budgetSs.getSpreadsheetTimeZone();
     var sheet = budgetSs.getSheetByName('Školení');
     var data = sheet.getDataRange().getValues();
-    Logger.log('DEBUG header row0: ' + JSON.stringify(data[0]));
-    Logger.log('DEBUG row1: ' + JSON.stringify(data[1]));
-    Logger.log('DEBUG row2: ' + JSON.stringify(data[2]));
-    Logger.log('DEBUG row3: ' + JSON.stringify(data[3]));
     var inPlan = false;
     for (var i = 0; i < data.length; i++) {
-      var col1 = String(data[i][1] || '').trim(); // sloupec B (Datum / popisek sekce)
-      if (col1 === 'Plán') { inPlan = true; continue; }
-      if (col1 === 'Realita') break; // konec sekce Plán
+      var cell = data[i][1]; // sloupec B (Datum / popisek sekce)
+      var labelStr = typeof cell === 'string' ? cell.trim() : '';
+      if (labelStr === 'Plán') { inPlan = true; continue; }
+      if (labelStr === 'Realita') break; // konec sekce Plán
       if (!inPlan) continue;
-      var m = col1.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
-      if (!m) continue; // přeskočí "CELKEM", prázdné řádky apod.
-      var key = m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+      var key = extractDateKey(cell, tz);
+      if (!key) continue; // přeskočí "CELKEM", prázdné řádky apod.
       var target = data[i][5]; // sloupec F
       if (typeof target === 'number' && target > 0) targets[key] = target;
     }
-    Logger.log('DEBUG targets found: ' + JSON.stringify(targets));
   } catch (e) {
     Logger.log('Nepodařilo se načíst cílovou kapacitu: ' + e.message);
   }
