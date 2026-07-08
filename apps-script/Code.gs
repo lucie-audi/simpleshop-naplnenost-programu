@@ -122,9 +122,12 @@ function pullSimpleShopData() {
         if (behIdx !== -1) {
           var behVal = (cols[behIdx] || '').trim();
           if (behVal) {
-            if (!programs[canon].runs[behVal]) programs[canon].runs[behVal] = { emails: {}, revenue: 0 };
+            if (!programs[canon].runs[behVal]) programs[canon].runs[behVal] = { emails: {}, paidEmails: {}, freeEmails: {}, revenue: 0 };
             programs[canon].runs[behVal].emails[email] = true;
             if (!isNaN(lineTotal)) programs[canon].runs[behVal].revenue += lineTotal;
+            // Placeno = položka se skutečnou částkou > 0, zdarma = 0 Kč (stipendium/voucher na 100 %).
+            if (lineTotal > 0) programs[canon].runs[behVal].paidEmails[email] = true;
+            else programs[canon].runs[behVal].freeEmails[email] = true;
           }
         }
       }
@@ -152,6 +155,8 @@ function pullSimpleShopData() {
       return {
         name: r,
         enrollments: Object.keys(p.runs[r].emails).length,
+        paid: Object.keys(p.runs[r].paidEmails).length,
+        free: Object.keys(p.runs[r].freeEmails).length,
         revenue: Math.round(p.runs[r].revenue),
       };
     }).sort(function (a, b) { return b.enrollments - a.enrollments; });
