@@ -87,6 +87,13 @@ function pullSimpleShopData() {
     try {
       var csv = JSON.parse(resp.getContentText()).csv || '';
       var lines = csv.split('\n').filter(function (l) { return l.trim().length > 0; });
+      // Vlastní pole "Vyber si běh" (pokud ho produkt má) sedí za standardními
+      // sloupci na pozici, kterou zjistíme z hlavičky – u různých produktů se liší.
+      var header = lines.length ? parseCsvLine(lines[0]) : [];
+      var behIdx = -1;
+      for (var h = 0; h < header.length; h++) {
+        if (/běh/i.test(header[h])) { behIdx = h; break; }
+      }
       // Počítáme distinct e-maily se stavem "Uhrazeno" – ne řádky. Platba na splátky
       // generuje víc faktur (řádků) pro jednoho člověka, takže bez deduplikace
       // by se stejný člověk počítal víckrát.
@@ -104,13 +111,22 @@ function pullSimpleShopData() {
 
         if (isDiscountLine(polozka)) continue; // sleva/kupón, ne skutečný program
         var canon = normalizeItemName(polozka);
-        if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {}, revenue: 0 };
+        if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {}, revenue: 0, runs: {} };
         programs[canon].emails[email] = true;
         if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) programs[canon].emailsToday[email] = true;
         // "Cena položky celkem" – skutečná zaplacená částka za tuhle položku, ne
         // jen katalogová cena produktu (u slev/stipendií jsou jiné).
         var lineTotal = parseFloat((cols[3] || '0').replace(',', '.'));
         if (!isNaN(lineTotal)) programs[canon].revenue += lineTotal;
+
+        if (behIdx !== -1) {
+          var behVal = (cols[behIdx] || '').trim();
+          if (behVal) {
+            if (!programs[canon].runs[behVal]) programs[canon].runs[behVal] = { emails: {}, revenue: 0 };
+            programs[canon].runs[behVal].emails[email] = true;
+            if (!isNaN(lineTotal)) programs[canon].runs[behVal].revenue += lineTotal;
+          }
+        }
       }
       total = Object.keys(paidAll).length;
       newToday = Object.keys(paidToday).length;
@@ -132,11 +148,19 @@ function pullSimpleShopData() {
 
   var programList = Object.keys(programs).map(function (name) {
     var p = programs[name];
+    var runs = Object.keys(p.runs).map(function (r) {
+      return {
+        name: r,
+        enrollments: Object.keys(p.runs[r].emails).length,
+        revenue: Math.round(p.runs[r].revenue),
+      };
+    }).sort(function (a, b) { return b.enrollments - a.enrollments; });
     return {
       name: name,
       enrollments: Object.keys(p.emails).length,
       newToday: Object.keys(p.emailsToday).length,
       revenue: Math.round(p.revenue),
+      runs: runs,
     };
   }).sort(function (a, b) { return b.enrollments - a.enrollments; });
 
@@ -201,7 +225,7 @@ function pushToDashboard(programList, todayStr) {
   var payload = {
     updatedAt: todayStr,
     programs: programList.map(function (p) {
-      return { name: p.name, price: p.enrollments ? Math.round(p.revenue / p.enrollments) : 0, enrollments: p.enrollments, newToday: p.newToday };
+      return { name: p.name, price: p.enrollments ? Math.round(p.revenue / p.enrollments) : 0, enrollments: p.enrollments, newToday: p.newToday, runs: p.runs };
     }),
     capacityByDate: loadCapacityTargets(),
   };
