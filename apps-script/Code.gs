@@ -112,24 +112,32 @@ function pullSimpleShopData() {
       // by se stejný člověk počítal víckrát.
       var paidAll = {};
       var paidToday = {};
-      if (/mentoring/i.test(p.name)) {
-        Logger.log('DEBUG produkt=' + p.name + ' pocet_radku=' + (rows.length - 1) + ' behIdx=' + behIdx);
-      }
       for (var i = 1; i < rows.length; i++) {
         var cols = rows[i];
         var stav = cols[8];       // sloupec "Stav"
-        if (/mentoring/i.test(p.name) && stav !== 'Uhrazeno') {
-          Logger.log('DEBUG NEUHRAZENO produkt=' + p.name + ' stav="' + stav + '" email=' + cols[4] + ' polozka="' + cols[2] + '" cena=' + cols[3] + ' beh=' + (behIdx !== -1 ? cols[behIdx] : 'N/A'));
-        }
-        if (stav !== 'Uhrazeno') continue;
         var email = cols[4];      // sloupec "E-mail"
         var polozka = cols[2];    // sloupec "Položka" (skutečně koupená věc)
         var uhrazeno = cols[24];  // sloupec "Uhrazeno" (datum platby)
-        paidAll[email] = true;
-        if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) paidToday[email] = true;
 
         if (isDiscountLine(polozka)) continue; // sleva/kupón, ne skutečný program
         var canon = normalizeItemName(polozka);
+
+        // Neuhrazené objednávky se nepočítají do žádných hlavních součtů (ty
+        // zůstávají jen "Uhrazeno"), ale zaznamenáme si je zvlášť u běhu, aby
+        // šlo vidět, kolik lidí ještě nedokončilo platbu.
+        if (stav === 'Neuhrazeno' && behIdx !== -1) {
+          var behValPending = (cols[behIdx] || '').trim();
+          if (behValPending) {
+            if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {}, revenue: 0, runs: {} };
+            if (!programs[canon].runs[behValPending]) programs[canon].runs[behValPending] = { emails: {}, paidEmails: {}, freeEmails: {}, pendingEmails: {}, revenue: 0 };
+            programs[canon].runs[behValPending].pendingEmails[email] = true;
+          }
+        }
+
+        if (stav !== 'Uhrazeno') continue;
+        paidAll[email] = true;
+        if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) paidToday[email] = true;
+
         if (!programs[canon]) programs[canon] = { emails: {}, emailsToday: {}, revenue: 0, runs: {} };
         programs[canon].emails[email] = true;
         if (uhrazeno && uhrazeno.indexOf(todayStr) === 0) programs[canon].emailsToday[email] = true;
@@ -141,7 +149,7 @@ function pullSimpleShopData() {
         if (behIdx !== -1) {
           var behVal = (cols[behIdx] || '').trim();
           if (behVal) {
-            if (!programs[canon].runs[behVal]) programs[canon].runs[behVal] = { emails: {}, paidEmails: {}, freeEmails: {}, revenue: 0 };
+            if (!programs[canon].runs[behVal]) programs[canon].runs[behVal] = { emails: {}, paidEmails: {}, freeEmails: {}, pendingEmails: {}, revenue: 0 };
             programs[canon].runs[behVal].emails[email] = true;
             if (!isNaN(lineTotal)) programs[canon].runs[behVal].revenue += lineTotal;
             // Placeno = položka se skutečnou částkou > 0, zdarma = 0 Kč (stipendium/voucher na 100 %).
@@ -176,6 +184,7 @@ function pullSimpleShopData() {
         enrollments: Object.keys(p.runs[r].emails).length,
         paid: Object.keys(p.runs[r].paidEmails).length,
         free: Object.keys(p.runs[r].freeEmails).length,
+        pending: Object.keys(p.runs[r].pendingEmails).length,
         revenue: Math.round(p.runs[r].revenue),
       };
     }).sort(function (a, b) { return b.enrollments - a.enrollments; });
