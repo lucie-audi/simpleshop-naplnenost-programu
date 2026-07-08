@@ -112,9 +112,15 @@ function pullSimpleShopData() {
       // by se stejný člověk počítal víckrát.
       var paidAll = {};
       var paidToday = {};
+      if (/mentoring/i.test(p.name)) {
+        Logger.log('DEBUG produkt=' + p.name + ' pocet_radku=' + (rows.length - 1) + ' behIdx=' + behIdx);
+      }
       for (var i = 1; i < rows.length; i++) {
         var cols = rows[i];
         var stav = cols[8];       // sloupec "Stav"
+        if (/mentoring/i.test(p.name) && stav !== 'Uhrazeno') {
+          Logger.log('DEBUG NEUHRAZENO produkt=' + p.name + ' stav="' + stav + '" email=' + cols[4] + ' polozka="' + cols[2] + '" cena=' + cols[3] + ' beh=' + (behIdx !== -1 ? cols[behIdx] : 'N/A'));
+        }
         if (stav !== 'Uhrazeno') continue;
         var email = cols[4];      // sloupec "E-mail"
         var polozka = cols[2];    // sloupec "Položka" (skutečně koupená věc)
