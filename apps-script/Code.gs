@@ -1,22 +1,35 @@
-function parseCsvLine(line) {
-  var result = [];
+// Parsuje celý CSV text najednou (ne po řádcích rozdělených '\n') – pole
+// v uvozovkách (např. víceřádková poznámka u objednávky) můžou obsahovat
+// skutečný znak nového řádku, a naivní split('\n') by takovou objednávku
+// rozsekal na několik nesmyslných "řádků" a rozbil tak celý export.
+function parseCsv(text) {
+  var rows = [];
+  var row = [];
   var cur = '';
   var inQuotes = false;
-  for (var i = 0; i < line.length; i++) {
-    var c = line[i];
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i];
     if (inQuotes) {
       if (c === '"') {
-        if (line[i + 1] === '"') { cur += '"'; i++; }
+        if (text[i + 1] === '"') { cur += '"'; i++; }
         else inQuotes = false;
-      } else cur += c;
+      } else {
+        cur += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ';') {
+      row.push(cur); cur = '';
+    } else if (c === '\r') {
+      // ignorovat
+    } else if (c === '\n') {
+      row.push(cur); rows.push(row); row = []; cur = '';
     } else {
-      if (c === '"') inQuotes = true;
-      else if (c === ';') { result.push(cur); cur = ''; }
-      else cur += c;
+      cur += c;
     }
   }
-  result.push(cur);
-  return result;
+  if (cur.length > 0 || row.length > 0) { row.push(cur); rows.push(row); }
+  return rows;
 }
 
 function isDiscountLine(name) {
@@ -86,10 +99,10 @@ function pullSimpleShopData() {
     var total = 0, newToday = 0;
     try {
       var csv = JSON.parse(resp.getContentText()).csv || '';
-      var lines = csv.split('\n').filter(function (l) { return l.trim().length > 0; });
+      var rows = parseCsv(csv).filter(function (r) { return r.length > 1 || (r.length === 1 && r[0].trim().length > 0); });
       // Vlastní pole "Vyber si běh" (pokud ho produkt má) sedí za standardními
       // sloupci na pozici, kterou zjistíme z hlavičky – u různých produktů se liší.
-      var header = lines.length ? parseCsvLine(lines[0]) : [];
+      var header = rows.length ? rows[0] : [];
       var behIdx = -1;
       for (var h = 0; h < header.length; h++) {
         if (/běh/i.test(header[h])) { behIdx = h; break; }
@@ -99,12 +112,9 @@ function pullSimpleShopData() {
       // by se stejný člověk počítal víckrát.
       var paidAll = {};
       var paidToday = {};
-      for (var i = 1; i < lines.length; i++) {
-        var cols = parseCsvLine(lines[i]);
+      for (var i = 1; i < rows.length; i++) {
+        var cols = rows[i];
         var stav = cols[8];       // sloupec "Stav"
-        if (/mentoring/i.test(p.name) && stav !== 'Uhrazeno') {
-          Logger.log('DEBUG NEUHRAZENO ' + p.name + ' | stav=' + stav + ' | email=' + cols[4] + ' | polozka=' + cols[2] + ' | beh=' + (behIdx !== -1 ? cols[behIdx] : 'N/A') + ' | cena=' + cols[3]);
-        }
         if (stav !== 'Uhrazeno') continue;
         var email = cols[4];      // sloupec "E-mail"
         var polozka = cols[2];    // sloupec "Položka" (skutečně koupená věc)
