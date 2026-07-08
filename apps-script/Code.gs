@@ -102,6 +102,9 @@ function pullSimpleShopData() {
       for (var i = 1; i < lines.length; i++) {
         var cols = parseCsvLine(lines[i]);
         var stav = cols[8];       // sloupec "Stav"
+        if (/mentoring/i.test(p.name) && stav !== 'Uhrazeno') {
+          Logger.log('DEBUG NEUHRAZENO ' + p.name + ' | stav=' + stav + ' | email=' + cols[4] + ' | polozka=' + cols[2] + ' | beh=' + (behIdx !== -1 ? cols[behIdx] : 'N/A') + ' | cena=' + cols[3]);
+        }
         if (stav !== 'Uhrazeno') continue;
         var email = cols[4];      // sloupec "E-mail"
         var polozka = cols[2];    // sloupec "Položka" (skutečně koupená věc)
